@@ -113,6 +113,12 @@ class EventViewSet(viewsets.ModelViewSet):
         print(request.data["bodies_id"])
         print(request.data.get("verification_bodies"))
 
+        try:
+            request.data["venue_ids"] = create_unreusable_locations(request.data["venue_names"])
+        except KeyError:
+            request.data["venue_ids"] = []
+
+
         if isinstance(request.data["bodies_id"], str) and user_has_privilege(
             request.user.profile, request.data["bodies_id"], "AddE"
         ):
@@ -127,10 +133,10 @@ class EventViewSet(viewsets.ModelViewSet):
         ):
             # Fill in ids of venues
             # print("User has privileges")
-            # try:
-            #     request.data["venue_ids"] = create_unreusable_locations(request.data["venue_names"])
-            # except KeyError:
-            #     request.data["venue_ids"]
+             #try:
+             #    request.data["venue_ids"] = create_unreusable_locations(request.data["venue_names"])
+             #except KeyError:
+             #    request.data["venue_ids"]
 
             return super().create(request)
         return forbidden_no_privileges()

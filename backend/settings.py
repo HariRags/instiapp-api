@@ -20,8 +20,12 @@ CORS_ORIGIN_WHITELIST = [
     "http://10.105.177.175",
     "http://localhost:4200",
     "http://10.198.49.175",
+    "http://10.195.160.191",
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+LDAP_USERNAME = os.environ.get("LDAP_USERNAME", "")
+LDAP_PASSWORD = os.environ.get("LDAP_PASSWORD", "")
 
 # SSO Config
 SSO_TOKEN_URL = "https://gymkhana.iitb.ac.in/sso/oauth/token/"
@@ -71,11 +75,11 @@ NO_LOGGING = {
 # EMAIL settings
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = "587"
-EMAIL_HOST_USER = ""
-EMAIL_HOST_PASSWORD = ""
+EMAIL_HOST_USER = "devcom.iitbombay@gmail.com"
+EMAIL_HOST_PASSWORD = "ioui qriy jcpe ixjz"
 EMAIL_EVENT_HOST_USER = ""
 EMAIL_USE_TLS = True
-RECIPIENT_LIST = ['recipient1@example.com', 'recipient2@example.com']
+RECIPIENT_LIST = ['amitmalakar887@gmail.com','harigovindraghunath@gmail.com']
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
-AUTH_USER = ""
+AUTH_USER = EMAIL_HOST_USER
