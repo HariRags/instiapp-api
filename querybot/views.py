@@ -1,5 +1,6 @@
 from rest_framework.response import Response
 from rest_framework import viewsets
+from django.db import transaction
 from querybot.helpers import query_search
 from querybot.models import Query, UnresolvedQuery
 from querybot.serializers import QuerySerializer, UnresolvedQuerySerializer
@@ -28,9 +29,10 @@ class QueryBotViewset(viewsets.ViewSet):
 
         user = request.user
 
-        new_q = UnresolvedQuery.objects.create(
-            question=ques, category=cat, user=user.profile
-        )
+        with transaction.atomic():
+            new_q = UnresolvedQuery.objects.create(
+                question=ques, category=cat, user=user.profile
+            )
         return Response(UnresolvedQuerySerializer(new_q).data)
 
     @classmethod

@@ -2,6 +2,7 @@
 import json
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
 from rest_framework.response import Response
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
@@ -31,35 +32,37 @@ class BuyAndSellViewSet(viewsets.ModelViewSet):
         )
 
     def update_limits(self):
-        for limit in Limit.objects.all():
-            if limit.endtime is not None and limit.endtime < timezone.localtime():
-                limit.delete()
+        with transaction.atomic():
+            for limit in Limit.objects.all():
+                if limit.endtime is not None and limit.endtime < timezone.localtime():
+                    limit.delete()
 
     def update_bans(self, product: Product = None):
-        if product is not None:
-            """Get the existing reports on this product that have been accepted by the moderator
-            but have not been addressed (by initiating a ban)."""
-            reports = Report.objects.filter(
-                product=product, addressed=False, accepted=True
-            )
-            if len(reports) >= REPORTS_THRES:
-                """Create a ban for the user lasting three days."""
-                endtime = timezone.localtime() + timezone.timedelta(days=3)
-                Ban.objects.create(user=product.user, endtime=endtime)
-                product.deleted = True
-                reports.update(addressed=True)
-        else:
-            """Calls the above if-block on products that have accepted but unaddressed reports."""
-            reports = Report.objects.filter(accepted=True, addressed=False)
-            products = []
-            for report in reports:
-                products.append(report.product)
-            for prod in set(products):
-                if products.count(prod) >= REPORTS_THRES:
-                    """Products from a banned user cannot be reported. (acc. to report function.)"""
+        with transaction.atomic():
+            if product is not None:
+                """Get the existing reports on this product that have been accepted by the moderator
+                but have not been addressed (by initiating a ban)."""
+                reports = Report.objects.filter(
+                    product=product, addressed=False, accepted=True
+                )
+                if len(reports) >= REPORTS_THRES:
+                    """Create a ban for the user lasting three days."""
                     endtime = timezone.localtime() + timezone.timedelta(days=3)
                     Ban.objects.create(user=product.user, endtime=endtime)
+                    product.deleted = True
                     reports.update(addressed=True)
+            else:
+                """Calls the above if-block on products that have accepted but unaddressed reports."""
+                reports = Report.objects.filter(accepted=True, addressed=False)
+                products = []
+                for report in reports:
+                    products.append(report.product)
+                for prod in set(products):
+                    if products.count(prod) >= REPORTS_THRES:
+                        """Products from a banned user cannot be reported. (acc. to report function.)"""
+                        endtime = timezone.localtime() + timezone.timedelta(days=3)
+                        Ban.objects.create(user=product.user, endtime=endtime)
+                        reports.update(addressed=True)
 
     def category_filter(self, request, queryset):
         category = request.GET.get("category")
@@ -99,11 +102,12 @@ class BuyAndSellViewSet(viewsets.ModelViewSet):
  Email: {userpro.email}"""
 
     def update_image_urls(self, request, instance, image_urls=[]):
-        if len(image_urls) == 0:
-            image_urls = json.loads(request.data["image_urls"])
-        ImageURL.objects.filter(product=instance).delete()
-        for url in image_urls:
-            ImageURL.objects.create(product=instance, url=url)
+        with transaction.atomic():
+            if len(image_urls) == 0:
+                image_urls = json.loads(request.data["image_urls"])
+            ImageURL.objects.filter(product=instance).delete()
+            for url in image_urls:
+                ImageURL.objects.create(product=instance, url=url)
 
     def update_user_details(self, request):
         request.data["user"] = UserProfile.objects.get(user=request.user).id
@@ -117,38 +121,39 @@ class BuyAndSellViewSet(viewsets.ModelViewSet):
         """Creates product if the user isn't banned and form is filled
         correctly. Ban checking is yet to be incorporated.
         """
+        with transaction.atomic():
+            self.update_limits()
+            from users.models import UserProfile
 
-        self.update_limits()
-        from users.models import UserProfile
+            userpro = UserProfile.objects.get(user=request.user)
 
-        userpro = UserProfile.objects.get(user=request.user)
+            """Limit checking:"""
+            limit, created = Limit.objects.get_or_create(user=userpro)
+            if limit.strikes >= 1000:
+                return Response("Limit of Three Products per Day Reached.", status=403)
+            limit.strikes += 1
+            if limit.strikes == 3:
+                limit.endtime = timezone.localtime() + timezone.timedelta(days=1)
+            limit.save()
+            """Create the product, modifying some fields."""
+            # request.data._mutable = True
+            # request.data['status'] = True
+            # image_urls = json.loads(request.data['image_urls'])
+            # request.data['contact_details'] = BuyAndSellViewSet.get_contact_details(userpro)
+            # request.data['user'] = userpro.id
+            # print(request.data)
 
-        """Limit checking:"""
-        limit, created = Limit.objects.get_or_create(user=userpro)
-        if limit.strikes >= 1000:
-            return Response("Limit of Three Products per Day Reached.", status=403)
-        limit.strikes += 1
-        if limit.strikes == 3:
-            limit.endtime = timezone.localtime() + timezone.timedelta(days=1)
-        limit.save()
-        """Create the product, modifying some fields."""
-        # request.data._mutable = True
-        # request.data['status'] = True
-        # image_urls = json.loads(request.data['image_urls'])
-        # request.data['contact_details'] = BuyAndSellViewSet.get_contact_details(userpro)
-        # request.data['user'] = userpro.id
-        # print(request.data)
-
-        try:
-            return super().create(request)
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)
+            try:
+                return super().create(request)
+            except Exception as e:
+                return Response({"error": str(e)}, status=400)
 
     @login_required_ajax
     def destroy(self, request, pk):
         product = self.get_product(pk)
         if UserProfile.objects.get(user=request.user) == product.user:
-            return super().destroy(request, pk)  # maybe change return arg?
+            with transaction.atomic():
+                return super().destroy(request, pk)  # maybe change return arg?
         return Response(ProductSerializer(product).data)
 
     def get_product(self, pk):
@@ -161,11 +166,12 @@ class BuyAndSellViewSet(viewsets.ModelViewSet):
         # product.category.numproducts-=1
         # product.category.numproducts-=1
         if product.user == UserProfile.objects.get(user=request.user):
-            #    request.data._mutable = True
-            #    request.data._mutable = True
-            request = self.update_user_details(request)
-            #    self.update_image_urls(request, product)
-            return super().update(request, pk)
+            with transaction.atomic():
+                #    request.data._mutable = True
+                #    request.data._mutable = True
+                request = self.update_user_details(request)
+                #    self.update_image_urls(request, product)
+                return super().update(request, pk)
         return Response(ProductSerializer(product).data)
 
     def retrieve(self, request, pk):
@@ -174,22 +180,23 @@ class BuyAndSellViewSet(viewsets.ModelViewSet):
 
     @login_required_ajax
     def report(self, request, pk):
-        product = self.get_product(pk)
-        self.update_bans(product)
-        if len(Ban.objects.filter(user=product.user)) > 0:
-            """If user is banned, their products don't show up in the list.
-            This if-block is for calls made to the api manually."""
-            return Response("User is Banned atm.")
-        reporter = UserProfile.objects.get(user=request.user)
-        # reporter = product.user
-        report_by_user, created = Report.objects.get_or_create(
-            product=product, reporter=reporter
-        )
-        report_by_user: Report
-        report_by_user.reason = request.data["reason"]
-        report_by_user.save()
-        self.mail_moderator(report_by_user)
-        return Response(ProductSerializer(product).data)
+        with transaction.atomic():
+            product = self.get_product(pk)
+            self.update_bans(product)
+            if len(Ban.objects.filter(user=product.user)) > 0:
+                """If user is banned, their products don't show up in the list.
+                This if-block is for calls made to the api manually."""
+                return Response("User is Banned atm.")
+            reporter = UserProfile.objects.get(user=request.user)
+            # reporter = product.user
+            report_by_user, created = Report.objects.get_or_create(
+                product=product, reporter=reporter
+            )
+            report_by_user: Report
+            report_by_user.reason = request.data["reason"]
+            report_by_user.save()
+            self.mail_moderator(report_by_user)
+            return Response(ProductSerializer(product).data)
 
     def get_categories(self, request):
         return Response(

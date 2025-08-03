@@ -1,5 +1,6 @@
 """Views for BuyAndSell."""
 from uuid import UUID
+from django.db import transaction
 from rest_framework.response import Response
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
@@ -39,16 +40,17 @@ class LostandFoundViewset(viewsets.ModelViewSet):
     @login_required_ajax
     def claim(self, request, *args, **kwargs):
         """Claim a product."""
-        try:
-            product = self.queryset.get(id=request.data["product_id"])
-        except ProductFound.DoesNotExist:
-            return Response({"message": "Product not found"}, status=404)
-        if product.claimed:
-            return Response({"message": "Product already claimed"}, status=400)
-        product.claimed = True
-        product.claimed_by = request.user.profile
-        product.save()
-        return Response({"message": "Product claimed"}, status=200)
+        with transaction.atomic():
+            try:
+                product = self.queryset.get(id=request.data["product_id"])
+            except ProductFound.DoesNotExist:
+                return Response({"message": "Product not found"}, status=404)
+            if product.claimed:
+                return Response({"message": "Product already claimed"}, status=400)
+            product.claimed = True
+            product.claimed_by = request.user.profile
+            product.save()
+            return Response({"message": "Product claimed"}, status=200)
 
 
 @login_required

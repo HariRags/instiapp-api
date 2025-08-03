@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.utils.timezone import make_aware
+from django.db import transaction
 from cryptography.fernet import Fernet
 from messmenu.models import Hostel, MessCalEvent
 from messmenu.serializers import HostelSerializer, MessCalEventSerializer
@@ -108,12 +109,13 @@ def getMessForMonth(user, rollno, curr):
             date = make_aware(date)
             hostel = k["hostel"]
 
-            item, c = MessCalEvent.objects.get_or_create(
-                user=user, datetime=date, hostel=hostel
-            )
-            if c or item.title != title:
-                item.title = title
-                item.save()
+            with transaction.atomic():
+                item, c = MessCalEvent.objects.get_or_create(
+                    user=user, datetime=date, hostel=hostel
+                )
+                if c or item.title != title:
+                    item.title = title
+                    item.save()
 
             items.append(item)
 

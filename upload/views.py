@@ -1,5 +1,6 @@
 """Views for upload app."""
 from rest_framework import viewsets
+from django.db import transaction
 from upload.serializers import UploadedImageSerializer
 from upload.models import UploadedImage
 from roles.helpers import login_required_ajax
@@ -17,9 +18,11 @@ class UploadViewSet(viewsets.ModelViewSet):
     @login_required_ajax
     def create(self, request):
         """Upload file."""
-        return super().create(request)
+        with transaction.atomic():
+            return super().create(request)
 
     @login_required_ajax
     def destroy(self, request, pk):
         """Delete file entry."""
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)

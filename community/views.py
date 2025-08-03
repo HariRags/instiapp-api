@@ -2,6 +2,7 @@ from uuid import UUID
 from rest_framework.response import Response
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from community.models import Community
 from community.models import CommunityPost
 from community.serializer_min import CommunitySerializerMin, CommunityPostSerializerMin
@@ -41,12 +42,14 @@ class ModeratorViewSet(viewsets.ModelViewSet):
             status = request.data["status"]
             if status is None:
                 return Response({"message": "{?action} is required"}, status=400)
-            if post.status == 3:
-                post.ignored = True
+            
+            with transaction.atomic():
+                if post.status == 3:
+                    post.ignored = True
 
-            # Check possible actions
-            post.status = status
-            post.save()
+                # Check possible actions
+                post.status = status
+                post.save()
             return Response({"message": "Status changed"})
 
         return forbidden_no_privileges()
@@ -130,8 +133,9 @@ class PostViewSet(viewsets.ModelViewSet):
         if "community" not in request.data or not request.data["community"]:
             return forbidden_no_privileges()
 
-        user, created = UserProfile.objects.get_or_create(user=request.user)
-        return super().create(request)
+        with transaction.atomic():
+            user, created = UserProfile.objects.get_or_create(user=request.user)
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
@@ -143,7 +147,8 @@ class PostViewSet(viewsets.ModelViewSet):
         if post.posted_by != request.user.profile:
             return forbidden_no_privileges()
 
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     def perform_action(self, request, action, pk):
         """action==feature for featuring a post"""
@@ -165,9 +170,9 @@ class PostViewSet(viewsets.ModelViewSet):
                     )
 
                 # Check possible actions
-
-                post.featured = is_featured
-                post.save()
+                with transaction.atomic():
+                    post.featured = is_featured
+                    post.save()
                 return Response(
                     {"message": "is_featured changed", "is_featured": is_featured}
                 )
@@ -176,9 +181,10 @@ class PostViewSet(viewsets.ModelViewSet):
 
         if action == "delete":
             if request.user.profile == post.posted_by:
-                post.deleted = True
-                post.featured = False
-                post.save()
+                with transaction.atomic():
+                    post.deleted = True
+                    post.featured = False
+                    post.save()
                 return Response({"message": "Post deleted"})
 
             if all(
@@ -188,22 +194,24 @@ class PostViewSet(viewsets.ModelViewSet):
                     )
                 ]
             ):
-                post.status = 2
-                post.featured = False
-                post.save()
+                with transaction.atomic():
+                    post.status = 2
+                    post.featured = False
+                    post.save()
                 return Response({"message": "Post deleted"})
 
             return forbidden_no_privileges()
 
         if action == "report":
-            if request.user.profile not in post.reported_by.all():
-                post.reported_by.add(request.user.profile)
-                # post.reports +=1
+            with transaction.atomic():
+                if request.user.profile not in post.reported_by.all():
+                    post.reported_by.add(request.user.profile)
+                    # post.reports +=1
+                    post.save()
+                    return Response({"message": "Post reported"})
+                post.reported_by.remove(request.user.profile)
+                # post.reports -=1
                 post.save()
-                return Response({"message": "Post reported"})
-            post.reported_by.remove(request.user.profile)
-            # post.reports -=1
-            post.save()
             return Response({"message": "Post unreported"})
 
         return Response({"message": "action not supported"}, status=400)
@@ -254,8 +262,10 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def create(self, request):
         name = request.data["name"]
         user, created = UserProfile.objects.get_or_create(user=request.user)
-        if not Community.objects.all().filter(name=name).exists():
-            super().create(request)
-            return Response({"message": "Community created"})
+        
+        with transaction.atomic():
+            if not Community.objects.all().filter(name=name).exists():
+                super().create(request)
+                return Response({"message": "Community created"})
 
         return Response({"message": "Community already exists"}, status=400)

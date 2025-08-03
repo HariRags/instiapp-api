@@ -5,6 +5,7 @@ from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db import transaction
 from bodies.serializers import BodySerializerMin
 from events.prioritizer import get_fresh_prioritized_events
 from events.prioritizer import get_prioritized
@@ -116,7 +117,8 @@ class EventViewSet(viewsets.ModelViewSet):
         if isinstance(request.data["bodies_id"], str) and user_has_privilege(
             request.user.profile, request.data["bodies_id"], "AddE"
         ):
-            return super().create(request)
+            with transaction.atomic():
+                return super().create(request)
 
         # Check privileges for all bodies
         if all(
@@ -132,7 +134,7 @@ class EventViewSet(viewsets.ModelViewSet):
             # except KeyError:
             #     request.data["venue_ids"]
 
-            return super().create(request)
+                return super().create(request)
         return forbidden_no_privileges()
 
     @login_required_ajax
@@ -165,7 +167,8 @@ class EventViewSet(viewsets.ModelViewSet):
         except KeyError:
             request.data["venue_ids"]
 
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @login_required_ajax
     def destroy(self, request, pk):
@@ -179,7 +182,8 @@ class EventViewSet(viewsets.ModelViewSet):
                 for body in event.bodies.all()
             ]
         ):
-            return super().destroy(request, pk)
+            with transaction.atomic():
+                return super().destroy(request, pk)
 
         return forbidden_no_privileges()
 
@@ -259,8 +263,9 @@ class EventMailVerificationViewSet(viewsets.ViewSet):
                         auth_user=AUTH_USER,
                         auth_password=EMAIL_HOST_PASSWORD,
                     )
-                    event.email_verified = True
-                    event.save()
+                    with transaction.atomic():
+                        event.email_verified = True
+                        event.save()
                     return Response({"success": "Mail sent successfully"})
                 except Exception as e:
                     return Response(
@@ -285,10 +290,11 @@ class EventMailVerificationViewSet(viewsets.ViewSet):
 
             if user_has_VerE_permission and not event.email_verified:
                 print(event.longdescription)
-                event.longdescription = ""
-                event.email_verified = True
-                event.email_rejected = True
-                event.save()
+                with transaction.atomic():
+                    event.longdescription = ""
+                    event.email_verified = True
+                    event.email_rejected = True
+                    event.save()
                 return Response({"success": "Mail rejected and content deleted"})
             return forbidden_no_privileges()
 
