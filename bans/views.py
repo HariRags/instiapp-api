@@ -2,6 +2,7 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+from django.db import transaction
 
 from roles.helpers import (
     login_required_ajax,
@@ -63,8 +64,9 @@ class SSOBanViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                serializer.validated_date["banned_by"] = request.user
-                serializer.save()
+                with transaction.atomic():
+                    serializer.validated_data["banned_by"] = request.user
+                    serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         return forbidden_no_privileges()
@@ -76,8 +78,9 @@ class SSOBanViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(instance, data=request.data, partial=True)
 
             if serializer.is_valid():
-                serializer.validated_data["banned_by"] = request.user
-                serializer.save()
+                with transaction.atomic():
+                    serializer.validated_data["banned_by"] = request.user
+                    serializer.save()
                 return Response(serializer.data)
 
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -87,6 +90,7 @@ class SSOBanViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, pk=None, **kwargs):
         if user_has_insti_privilege(request.user.profile, "RoleB"):
             instance = get_object_or_404(self.queryset, pk=pk)
-            instance.delete()
+            with transaction.atomic():
+                instance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return forbidden_no_privileges()

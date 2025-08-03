@@ -1,6 +1,7 @@
 """Viewsets for bodies."""
 from rest_framework import viewsets
 from rest_framework.response import Response
+from django.db import transaction
 from roles.models import BodyRole
 from roles.serializers import RoleSerializer
 from roles.serializers import RoleSerializerWithEvents
@@ -19,18 +20,21 @@ class BodyRoleViewSet(viewsets.ModelViewSet):
     @login_required_ajax
     def create(self, request):
         if user_has_insti_privilege(request.user.profile, "RoleB"):
-            return super().create(request)
+            with transaction.atomic():
+                return super().create(request)
 
         if "body" not in request.data or not request.data["body"]:
             return Response({"body": "body is required"}, status=400)
         if not user_has_privilege(request.user.profile, request.data["body"], "Role"):
             return forbidden_no_privileges()
-        return super().create(request)
+        with transaction.atomic():
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
         if user_has_insti_privilege(request.user.profile, "RoleB"):
-            return super().update(request, pk)
+            with transaction.atomic():
+                return super().update(request, pk)
 
         body = BodyRole.objects.get(id=pk).body
         if request.data["body"] != str(body.id):
@@ -43,12 +47,14 @@ class BodyRoleViewSet(viewsets.ModelViewSet):
             )
         if not user_has_privilege(request.user.profile, str(body.id), "Role"):
             return forbidden_no_privileges()
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @login_required_ajax
     def destroy(self, request, pk):
         if user_has_insti_privilege(request.user.profile, "RoleB"):
-            return super().destroy(request, pk)
+            with transaction.atomic():
+                return super().destroy(request, pk)
 
         # Check for permission
         body_role = BodyRole.objects.get(id=pk)
@@ -60,7 +66,8 @@ class BodyRoleViewSet(viewsets.ModelViewSet):
         if body_role.former_users.count() > 0:
             return forbidden_no_privileges()
 
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)
 
     @classmethod
     @login_required_ajax

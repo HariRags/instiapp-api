@@ -3,6 +3,7 @@ import sys
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from django.db import transaction
 from roles.helpers import insti_permission_required
 from roles.helpers import login_required_ajax
 from roles.helpers import user_has_insti_privilege
@@ -40,8 +41,8 @@ class LocationViewSet(viewsets.ModelViewSet):
     def create(self, request):
         """Create a Location.
         Needs 'Location' institute permission."""
-
-        return super().create(request)
+        with transaction.atomic():
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
@@ -51,7 +52,8 @@ class LocationViewSet(viewsets.ModelViewSet):
 
         # Allow insti privelege to do anything
         if user_has_insti_privilege(request.user.profile, "Location"):
-            return super().update(request, pk)
+            with transaction.atomic():
+                return super().update(request, pk)
 
         # Disallow modifying reusable locations or marking reusable
         location = Location.objects.get(id=pk)
@@ -70,14 +72,15 @@ class LocationViewSet(viewsets.ModelViewSet):
             if not can_update:
                 return forbidden_no_privileges()
 
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @insti_permission_required("Location")
     def destroy(self, request, pk):
         """Delete a Location.
         Needs 'Location' institute permission."""
-
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)
 
 
 """

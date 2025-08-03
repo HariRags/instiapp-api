@@ -3,6 +3,7 @@ from functools import reduce
 import operator
 from django.db.models import Q
 from django.conf import settings
+from django.db import transaction
 from rest_framework.generics import get_object_or_404
 from rest_framework import viewsets
 from rest_framework.response import Response
@@ -127,25 +128,26 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 
         # Save if valid
         if serializer.is_valid():
-            complaint = serializer.save()
+            with transaction.atomic():
+                complaint = serializer.save()
 
-            # Create and save all tags if present
-            for tag in tags:
-                if ComplaintTag.objects.filter(tag_uri=tag).exists():
-                    exist_tag = ComplaintTag.objects.get(tag_uri=tag)
-                    complaint.tags.add(exist_tag.id)
-                else:
-                    tag_name = ComplaintTag(tag_uri=tag)
-                    tag_name.save()
-                    complaint.tags.add(tag_name)
+                # Create and save all tags if present
+                for tag in tags:
+                    if ComplaintTag.objects.filter(tag_uri=tag).exists():
+                        exist_tag = ComplaintTag.objects.get(tag_uri=tag)
+                        complaint.tags.add(exist_tag.id)
+                    else:
+                        tag_name = ComplaintTag(tag_uri=tag)
+                        tag_name.save()
+                        complaint.tags.add(tag_name)
 
-            # Create and save all images if present
-            for image in images:
-                ComplaintImage.objects.create(complaint=complaint, image_url=image)
-            # Add the complaint creator to the subscribers list
-            if settings.COMPLAINT_AUTO_SUBSCRIBE:
-                complaint.subscriptions.add(complaint.created_by)
-                complaint.save()
+                # Create and save all images if present
+                for image in images:
+                    ComplaintImage.objects.create(complaint=complaint, image_url=image)
+                # Add the complaint creator to the subscribers list
+                if settings.COMPLAINT_AUTO_SUBSCRIBE:
+                    complaint.subscriptions.add(complaint.created_by)
+                    complaint.save()
 
         # Return new serialized response
         return Response(
@@ -163,12 +165,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             return Response({"message": "{?action} is required"}, status=400)
 
         # Check possible actions
-        if value == "0":
-            complaint.users_up_voted.remove(self.request.user.profile)
-        elif value == "1":
-            complaint.users_up_voted.add(self.request.user.profile)
-        else:
-            return Response({"message": "Invalid Action"}, status=400)
+        with transaction.atomic():
+            if value == "0":
+                complaint.users_up_voted.remove(self.request.user.profile)
+            elif value == "1":
+                complaint.users_up_voted.add(self.request.user.profile)
+            else:
+                return Response({"message": "Invalid Action"}, status=400)
 
         return Response(
             ComplaintSerializer(Complaint.objects.get(id=complaint.id)).data, status=200
@@ -185,12 +188,13 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             return Response({"message": "{?action} is required"}, status=400)
 
         # Check possible actions
-        if value == "0":
-            complaint.subscriptions.remove(self.request.user.profile)
-        elif value == "1":
-            complaint.subscriptions.add(self.request.user.profile)
-        else:
-            return Response({"message": "Invalid Action"}, status=400)
+        with transaction.atomic():
+            if value == "0":
+                complaint.subscriptions.remove(self.request.user.profile)
+            elif value == "1":
+                complaint.subscriptions.add(self.request.user.profile)
+            else:
+                return Response({"message": "Invalid Action"}, status=400)
 
         return Response(
             ComplaintSerializer(Complaint.objects.get(id=complaint.id)).data, status=200
@@ -210,13 +214,15 @@ class CommentViewSet(viewsets.ModelViewSet):
     def create(cls, request, pk):  # pylint: disable=W0237
         get_complaint = get_object_or_404(Complaint.objects.all(), id=pk)
         get_text = request.data["text"]
-        comment = ComplaintComment.objects.create(
-            text=get_text, commented_by=request.user.profile, complaint=get_complaint
-        )
-        # Auto subscribes the commenter to the complaint
-        if settings.COMPLAINT_AUTO_SUBSCRIBE:
-            get_complaint.subscriptions.add(request.user.profile)
-            get_complaint.save()
+
+        with transaction.atomic():
+            comment = ComplaintComment.objects.create(
+                text=get_text, commented_by=request.user.profile, complaint=get_complaint
+            )
+            # Auto subscribes the commenter to the complaint
+            if settings.COMPLAINT_AUTO_SUBSCRIBE:
+                get_complaint.subscriptions.add(request.user.profile)
+                get_complaint.save()
 
         serialized = CommentSerializer(comment)
         return Response(serialized.data, status=201)
@@ -231,7 +237,8 @@ class CommentViewSet(viewsets.ModelViewSet):
 
         # Check if the comment is done by current user
         if comment.commented_by == self.request.user.profile:
-            ComplaintComment.objects.filter(id=pk).update(text=text)
+            with transaction.atomic():
+                ComplaintComment.objects.filter(id=pk).update(text=text)
             serialized = CommentPostSerializer(
                 self.get_comment(pk), context={"request": request}
             ).data
@@ -245,7 +252,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         """Delete a comment by the current user."""
         comment = self.get_comment(pk)
         if comment.commented_by == self.request.user.profile:
-            return super().destroy(request, pk)
+            with transaction.atomic():
+                return super().destroy(request, pk)
         return Response(status=403)
 
     @login_required_ajax

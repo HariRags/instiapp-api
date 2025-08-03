@@ -4,6 +4,7 @@ from rest_framework import viewsets
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db import transaction
 from login.helpers import update_fcm_device
 
 from events.models import UserEventStatus
@@ -72,15 +73,17 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
         # Count as a ping
         profile = request.user.profile
-        profile.last_ping = timezone.now()
-        profile.active = True
+        
+        with transaction.atomic():
+            profile.last_ping = timezone.now()
+            profile.active = True
 
-        serializer = UserProfileFullSerializer(
-            profile, data=request.data, context=self.get_serializer_context()
-        )
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=400)
-        serializer.save()
+            serializer = UserProfileFullSerializer(
+                profile, data=request.data, context=self.get_serializer_context()
+            )
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=400)
+            serializer.save()
         return Response(serializer.data)
 
     @classmethod
@@ -103,20 +106,23 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         # Delete record if unknown status
         if status not in (1, 2):
             if ues:
-                ues.delete()
+                with transaction.atomic():
+                    ues.delete()
             return Response(status=204)
 
         # Create new UserEventStatus if not existing
         if not ues:
             get_event = get_object_or_404(Event.objects.all(), pk=event_pk)
-            UserEventStatus.objects.create(
-                event=get_event, user=request.user.profile, status=status
-            )
+            with transaction.atomic():
+                UserEventStatus.objects.create(
+                    event=get_event, user=request.user.profile, status=status
+                )
             return Response(status=204)
 
         # Update existing UserEventStatus
-        ues.status = status
-        ues.save()
+        with transaction.atomic():
+            ues.status = status
+            ues.save()
         return Response(status=204)
 
     @classmethod
@@ -138,14 +144,16 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         # Create new UserNewsReaction if not existing
         if not unr:
             get_news = get_object_or_404(NewsEntry.objects.all(), pk=news_pk)
-            UserNewsReaction.objects.create(
-                news=get_news, user=request.user.profile, reaction=reaction
-            )
+            with transaction.atomic():
+                UserNewsReaction.objects.create(
+                    news=get_news, user=request.user.profile, reaction=reaction
+                )
             return Response(status=204)
 
         # Update existing UserNewsReaction
-        unr.reaction = reaction
-        unr.save()
+        with transaction.atomic():
+            unr.reaction = reaction
+            unr.save()
         return Response(status=204)
 
     @classmethod
@@ -161,7 +169,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         if reaction is None or answer is None or question is None:
             return Response({"message": "reaction is required"}, status=400)
 
-        ChatBotLog.objects.create(question=question, answer=answer, reaction=reaction)
+        with transaction.atomic():
+            ChatBotLog.objects.create(question=question, answer=answer, reaction=reaction)
 
         return Response(status=204)
 
@@ -184,14 +193,16 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         # Create new UserNewsReaction if not existing
         if not upr:
             get_post = get_object_or_404(CommunityPost.objects.all(), pk=post_pk)
-            CommunityPostUserReaction.objects.create(
-                communitypost=get_post, user=request.user.profile, reaction=reaction
-            )
+            with transaction.atomic():
+                CommunityPostUserReaction.objects.create(
+                    communitypost=get_post, user=request.user.profile, reaction=reaction
+                )
             return Response(status=204)
 
         # Update existing UserNewsReaction
-        upr.reaction = reaction
-        upr.save()
+        with transaction.atomic():
+            upr.reaction = reaction
+            upr.save()
         return Response(status=204)
 
     @classmethod
@@ -219,8 +230,9 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )
 
         # Update values
-        sub.p256dh = data["keys"]["p256dh"]
-        sub.auth = data["keys"]["auth"]
-        sub.save()
+        with transaction.atomic():
+            sub.p256dh = data["keys"]["p256dh"]
+            sub.auth = data["keys"]["auth"]
+            sub.save()
 
         return Response(status=204)

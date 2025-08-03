@@ -2,6 +2,7 @@
 from uuid import UUID
 import pyotp
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.response import Response
 
@@ -59,21 +60,22 @@ class AchievementViewSet(viewsets.ModelViewSet):
     @login_required_ajax
     def create(self, request):
         """Make a request to a body for a new achievement."""
-        if request.data["isSkill"]:
-            skill = Skill.objects.filter(title=request.data["title"]).first()
-            if skill:
-                request.data["body"] = skill.body.id
-                request.data["description"] = ""
-            else:
+        with transaction.atomic():
+            if request.data["isSkill"]:
+                skill = Skill.objects.filter(title=request.data["title"]).first()
+                if skill:
+                    request.data["body"] = skill.body.id
+                    request.data["description"] = ""
+                else:
+                    return forbidden_no_privileges()
+
+            # Disallow requests without body
+            if ("body" not in request.data or not request.data["body"]) and (
+                not request.data["isSkill"]
+            ):
                 return forbidden_no_privileges()
 
-        # Disallow requests without body
-        if ("body" not in request.data or not request.data["body"]) and (
-            not request.data["isSkill"]
-        ):
-            return forbidden_no_privileges()
-
-        return super().create(request)
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
@@ -85,8 +87,9 @@ class AchievementViewSet(viewsets.ModelViewSet):
 
         # Check if this is a patch request and the user is patching
         if request.method == "PATCH" and request.user.profile == achievement.user:
-            achievement.hidden = bool(request.data["hidden"])
-            achievement.save(update_fields=["hidden"])
+            with transaction.atomic():
+                achievement.hidden = bool(request.data["hidden"])
+                achievement.save(update_fields=["hidden"])
             return Response(status=204)
 
         # Check if the user has privileges for updating
@@ -107,7 +110,8 @@ class AchievementViewSet(viewsets.ModelViewSet):
                 status=400,
             )
 
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @login_required_ajax
     def destroy(self, request, pk):
@@ -121,7 +125,8 @@ class AchievementViewSet(viewsets.ModelViewSet):
         if not user_has_privilege(request.user.profile, achievement.body.id, "VerA"):
             return forbidden_no_privileges()
 
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)
 
 
 class OfferedAchievementViewSet(viewsets.ModelViewSet):
@@ -176,7 +181,8 @@ class OfferedAchievementViewSet(viewsets.ModelViewSet):
         if not user_has_privilege(request.user.profile, request.data["body"], "AddE"):
             return forbidden_no_privileges()
 
-        return super().create(request)
+        with transaction.atomic():
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
@@ -189,7 +195,8 @@ class OfferedAchievementViewSet(viewsets.ModelViewSet):
         if not user_has_privilege(request.user.profile, offer.body.id, "AddE"):
             return forbidden_no_privileges()
 
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @login_required_ajax
     def destroy(self, request, pk):
@@ -202,7 +209,8 @@ class OfferedAchievementViewSet(viewsets.ModelViewSet):
         if not user_has_privilege(request.user.profile, offer.body.id, "AddE"):
             return forbidden_no_privileges()
 
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)
 
     @login_required_ajax
     def claim_secret(self, request, pk):
@@ -216,23 +224,24 @@ class OfferedAchievementViewSet(viewsets.ModelViewSet):
         if offer.secret and (
             secret == offer.secret or secret == pyotp.TOTP(offer.secret).now()
         ):
-            if request.user.profile.achievements.filter(offer=offer).exists():
-                return Response({"message": "You already have this achievement!"})
+            with transaction.atomic():
+                if request.user.profile.achievements.filter(offer=offer).exists():
+                    return Response({"message": "You already have this achievement!"})
 
-            # Create the achievement
-            Achievement.objects.create(
-                title=offer.title,
-                description=offer.description,
-                admin_note="SECRET",
-                body=offer.body,
-                event=offer.event,
-                verified=True,
-                dismissed=True,
-                user=request.user.profile,
-                offer=offer,
-            )
+                # Create the achievement
+                Achievement.objects.create(
+                    title=offer.title,
+                    description=offer.description,
+                    admin_note="SECRET",
+                    body=offer.body,
+                    event=offer.event,
+                    verified=True,
+                    dismissed=True,
+                    user=request.user.profile,
+                    offer=offer,
+                )
 
-            return Response({"message": "Achievement unlocked successfully!"}, 201)
+                return Response({"message": "Achievement unlocked successfully!"}, 201)
 
         return forbidden_no_privileges()
 
@@ -249,8 +258,9 @@ class UserInterestViewSet(viewsets.ModelViewSet):
 
         interest = self.queryset.filter(user=request.user.profile, title=pk).first()
         if interest:
-            interest.delete()
-            return Response({"message": "Interest Deleted Successfully"}, 201)
+            with transaction.atomic():
+                interest.delete()
+                return Response({"message": "Interest Deleted Successfully"}, 201)
 
         return Response({"message": "Interest Doesn't Exist"}, 404)
 
@@ -259,18 +269,19 @@ class UserInterestViewSet(viewsets.ModelViewSet):
         """Add a user interest."""
 
         try:
-            UUID(request.data["id"], version=4)
-            interest = get_object_or_404(Interest.objects, id=request.data["id"])
-            if self.queryset.filter(
-                user=request.user.profile, title=request.data["title"]
-            ).exists():
-                return Response({"message": "You already have this interest!"}, 400)
+            with transaction.atomic():
+                UUID(request.data["id"], version=4)
+                interest = get_object_or_404(Interest.objects, id=request.data["id"])
+                if self.queryset.filter(
+                    user=request.user.profile, title=request.data["title"]
+                ).exists():
+                    return Response({"message": "You already have this interest!"}, 400)
 
-            userInterest = UserInterest.objects.create(
-                user=request.user.profile, title=interest.title
-            )
-            userInterest.save()
+                userInterest = UserInterest.objects.create(
+                    user=request.user.profile, title=interest.title
+                )
+                userInterest.save()
 
-            return Response({"message": "Interest Added Successfully"}, 201)
+                return Response({"message": "Interest Added Successfully"}, 201)
         except ValueError:
             return Response({"message": "Invalid ID"}, 404)

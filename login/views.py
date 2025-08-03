@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth import logout
 from django.utils import timezone
 from django.core.mail import send_mail
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.response import Response
 from login.helpers import perform_login, create_key_send_mail, perform_alumni_login
@@ -132,8 +133,9 @@ class LoginViewSet(viewsets.ViewSet):
             return Response({"message": "UserProfile doesn't exist"}, status=500)
 
         # Count this as a ping
-        user_profile.last_ping = timezone.now()
-        user_profile.save(update_fields=["last_ping"])
+        with transaction.atomic():
+            user_profile.last_ping = timezone.now()
+            user_profile.save(update_fields=["last_ping"])
 
         # Return the details and nested profile
         return Response(
@@ -243,10 +245,11 @@ class LoginViewSet(viewsets.ViewSet):
             )
 
         # Save request
-        new_otp_req = AlumniUser(
-            ldap=ldap_entered, keyStored=str(lastKey), timeLoginRequest=timezone.now()
-        )
-        new_otp_req.save()
+        with transaction.atomic():
+            new_otp_req = AlumniUser(
+                ldap=ldap_entered, keyStored=str(lastKey), timeLoginRequest=timezone.now()
+            )
+            new_otp_req.save()
         return Response({"error_status": False, "msg": "Resent OTP"})
 
     @staticmethod

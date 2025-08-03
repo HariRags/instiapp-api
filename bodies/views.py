@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 from bodies.serializers_followers import BodyFollowersSerializer
 from bodies.serializers import BodySerializer
@@ -56,8 +57,8 @@ class BodyViewSet(viewsets.ModelViewSet):
     def create(self, request):
         """Create Body.
         Needs the `AddB` Institute Role permission."""
-
-        return super().create(request)
+        with transaction.atomic():
+            return super().create(request)
 
     @login_required_ajax
     def update(self, request, pk):
@@ -66,14 +67,15 @@ class BodyViewSet(viewsets.ModelViewSet):
 
         if not user_has_privilege(request.user.profile, pk, "UpdB"):
             return forbidden_no_privileges()
-        return super().update(request, pk)
+        with transaction.atomic():
+            return super().update(request, pk)
 
     @insti_permission_required("DelB")
     def destroy(self, request, pk):
         """Delete Body.
         Needs the `DelB` institute permission."""
-
-        return super().destroy(request, pk)
+        with transaction.atomic():
+            return super().destroy(request, pk)
 
     @login_required_ajax
     def follow(self, request, pk):
@@ -87,12 +89,13 @@ class BodyViewSet(viewsets.ModelViewSet):
             return Response({"message": "{?action} is required"}, status=400)
 
         # Check possible actions
-        if value == "0":
-            request.user.profile.followed_bodies.remove(body)
-        elif value == "1":
-            request.user.profile.followed_bodies.add(body)
-        else:
-            return Response({"message": "Invalid Action"}, status=400)
+        with transaction.atomic():
+            if value == "0":
+                request.user.profile.followed_bodies.remove(body)
+            elif value == "1":
+                request.user.profile.followed_bodies.add(body)
+            else:
+                return Response({"message": "Invalid Action"}, status=400)
 
         return Response(status=204)
 
