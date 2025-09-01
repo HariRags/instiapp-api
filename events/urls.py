@@ -6,6 +6,7 @@ urlpatterns = [
     path("events", EventViewSet.as_view({"get": "list", "post": "create"})),
     path("events-all", EventViewSet.as_view({"get": "list_all"})),
     path("events-my", EventViewSet.as_view({"get": "list_my_events"})),
+    path("events-to-verify", EventViewSet.as_view({"get": "list_events_to_verify"})),
     path(
         "events/<pk>",
         EventViewSet.as_view({"get": "retrieve", "put": "update", "delete": "destroy"}),
