@@ -97,8 +97,7 @@ class EventViewSet(viewsets.ModelViewSet):
 
     @login_required_ajax
     def list_my_events(self, request):
-        """List Events created by the current user.
-        Includes all events created by the user with their verification status."""
+        """List Events created by the current user along with their verification status"""
 
         queryset = self.queryset.filter(created_by=request.user.profile).order_by('-start_time')
         queryset = EventFullSerializer.setup_eager_loading(queryset, request)
@@ -106,6 +105,23 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = EventFullSerializer(queryset, many=True, context={"request": request})
         data = serializer.data
    
+        return Response({"count": len(data), "data": data})
+
+    @login_required_ajax
+    def list_events_to_verify(self, request):
+        """List events that need to be verified by the current user"""
+        
+        # Get all bodies where the user has VerE privilege
+        bodies_with_vere_privilege = bodies_with_users_having_privilege("VerE")
+        
+        queryset = self.queryset.filter(
+            email_verified=False,
+            verification_bodies__in=bodies_with_vere_privilege).distinct().order_by('-start_time')
+        queryset = EventFullSerializer.setup_eager_loading(queryset, request)
+        
+        serializer = EventFullSerializer(queryset, many=True, context={"request": request})
+        data = serializer.data
+        
         return Response({"count": len(data), "data": data})
 
 
