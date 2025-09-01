@@ -66,7 +66,7 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def list(self, request):
         """List Events.
-        List fresh events prioritized for the current user."""
+        List fresh events prioritized for the current user and in descending order by time"""
 
         # Check for date filtered query params
         start = request.GET.get("start")
@@ -75,11 +75,11 @@ class EventViewSet(viewsets.ModelViewSet):
         if start is not None and end is not None:
             # Try date-filtered if we have the params
             queryset = get_prioritized(
-                self.queryset.filter(start_time__range=(start, end),email_rejected=False), request
+                self.queryset.filter(start_time__range=(start, end),email_verified=True), request
             )
         else:
             # Respond with recent events
-            queryset = get_fresh_prioritized_events(self.queryset.filter(email_rejected=False), request)
+            queryset = get_fresh_prioritized_events(self.queryset.filter(email_verified=True), request)
 
         serializer = EventSerializer(queryset, many=True, context={"request": request})
         data = serializer.data
@@ -87,13 +87,27 @@ class EventViewSet(viewsets.ModelViewSet):
     
     def list_all(self, request):
         """List Events.
-        List fresh events prioritized for the current user."""
+        List all events sorted in time order"""
 
-        queryset = self.queryset.all().order_by('-start_time')
+        queryset = self.queryset.filter(email_verified=True).order_by('-start_time')
         serializer = EventSerializer(queryset, many=True, context={"request": request})
         data = serializer.data
    
         return Response({"count": len(data), "data": data})
+
+    @login_required_ajax
+    def list_my_events(self, request):
+        """List Events created by the current user.
+        Includes all events created by the user with their verification status."""
+
+        queryset = self.queryset.filter(created_by=request.user.profile).order_by('-start_time')
+        queryset = EventFullSerializer.setup_eager_loading(queryset, request)
+        
+        serializer = EventFullSerializer(queryset, many=True, context={"request": request})
+        data = serializer.data
+   
+        return Response({"count": len(data), "data": data})
+
 
     @login_required_ajax
     def create(self, request):
