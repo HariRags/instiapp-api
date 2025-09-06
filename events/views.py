@@ -98,6 +98,7 @@ class EventViewSet(viewsets.ModelViewSet):
     @login_required_ajax
     def list_my_events(self, request):
         """List Events created by the current user along with their verification status"""
+        """List Events created by the current user along with their verification status"""
 
         queryset = self.queryset.filter(created_by=request.user.profile).order_by('-start_time')
         queryset = EventFullSerializer.setup_eager_loading(queryset, request)
