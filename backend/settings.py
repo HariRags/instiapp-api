@@ -69,13 +69,17 @@ NO_LOGGING = {
 }
 
 # EMAIL settings
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = "587"
 EMAIL_HOST_USER = ""
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
 EMAIL_HOST_PASSWORD = ""
-EMAIL_EVENT_HOST_USER = ""
+EMAIL_EVENT_HOST_USER = EMAIL_HOST_USER
 EMAIL_USE_TLS = True
-RECIPIENT_LIST = ['recipient1@example.com', 'recipient2@example.com']
+EMAIL_USE_SSL = False
+EMAIL_BACKEND = "events.email_backend.PatchedEmailBackend"
+EMAIL_SSL_CERTFILE = None
+EMAIL_SSL_KEYFILE = None
+RECIPIENT_LIST = ['raj282bss@gmail.com', '24b0422@iitb.ac.in', '23b3003@iitb.ac.in']
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
-AUTH_USER = ""
+AUTH_USER = EMAIL_HOST_USER
