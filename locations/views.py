@@ -122,36 +122,46 @@ def get_shortest_path(request):
 
         if path is not None:
             if formatted_origin:
-                loc_path.append(
-                    [
-                        LocationSerializer(Location.objects.get(name=strt)).data[
-                            "pixel_x"
-                        ],
-                        LocationSerializer(Location.objects.get(name=strt)).data[
-                            "pixel_y"
-                        ],
-                    ]
-                )
+                try:
+                    loc_path.append(
+                        [
+                            LocationSerializer(Location.objects.get(name=strt)).data[
+                                "pixel_x"
+                            ],
+                            LocationSerializer(Location.objects.get(name=strt)).data[
+                                "pixel_y"
+                            ],
+                        ]
+                    )
+                except Location.DoesNotExist:
+                    return Response(data={"detail": f"Origin location '{strt}' does not exist"})
 
             for a in range(len(path)):
                 i = path[a]
-                if type(i) == str:
-                    loc_i = Location.objects.get(name=i)
-                else:
-                    name = "Node" + str(i)
-                    loc_i = Location.objects.get(name=name)
+                try:
+                    if type(i) == str:
+                        loc_i = Location.objects.get(name=i)
+                    else:
+                        name = "Node" + str(i)
+                        loc_i = Location.objects.get(name=name)
+                    loc_path.append(
+                        [
+                            LocationSerializer(loc_i).data["pixel_x"],
+                            LocationSerializer(loc_i).data["pixel_y"],
+                        ]
+                    )
+                except Location.DoesNotExist:
+                    return Response(data={"detail": f"Location '{i}' in path does not exist"})
+
+            try:
                 loc_path.append(
                     [
-                        LocationSerializer(loc_i).data["pixel_x"],
-                        LocationSerializer(loc_i).data["pixel_y"],
+                        LocationSerializer(Location.objects.get(name=dest)).data["pixel_x"],
+                        LocationSerializer(Location.objects.get(name=dest)).data["pixel_y"],
                     ]
                 )
-            loc_path.append(
-                [
-                    LocationSerializer(Location.objects.get(name=dest)).data["pixel_x"],
-                    LocationSerializer(Location.objects.get(name=dest)).data["pixel_y"],
-                ]
-            )
+            except Location.DoesNotExist:
+                return Response(data={"detail": f"Destination location '{dest}' does not exist"})
 
             return Response(loc_path)
         return Response(data={"detail": "No path found"})
